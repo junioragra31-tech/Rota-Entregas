@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="description" content="Rota Entregas — organize e navegue pelas suas entregas.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<title>Rota Entregas</title>
+</head>
+<body>
+<header class="app-header">
+  <div class="brand"><img src="icons/icon-192.png" alt=""><div><h1>Rota Entregas</h1><p>Seu assistente de entregas</p></div></div>
+  <button id="installBtn" class="install hidden">＋ Instalar</button>
+</header>
+
+<main>
+<section class="hero">
+  <div><span class="badge">PROTÓTIPO PWA</span><h2>Otimize sua rota</h2><p>Organize as paradas e abra a navegação no Google Maps ou Waze.</p></div>
+  <div class="hero-icon">🚚</div>
+</section>
+
+<section class="panel">
+<h2>Configuração</h2>
+<label for="start">Ponto de saída</label>
+<input id="start" value="Centro de Santarém">
+<label for="nav">Navegador</label>
+<select id="nav"><option value="maps">Google Maps</option><option value="waze">Waze</option></select>
+<button id="opt" class="primary">⚡ Calcular melhor rota</button>
+</section>
+
+<section class="stats">
+<div><b id="count">0</b><span>paradas</span></div>
+<div><b id="km">0 km</b><span>distância</span></div>
+<div><b id="time">0 min</b><span>tempo</span></div>
+</section>
+
+<section class="panel">
+<div class="title"><h2>Sequência</h2><span id="status">Aguardando</span></div>
+<ol id="route"></ol>
+</section>
+
+<section class="panel">
+<h2>Instalação</h2>
+<p id="installHelp">Quando o navegador oferecer a instalação, toque em <b>Instalar</b>. Se o botão não aparecer, use o menu do Chrome e escolha <b>Adicionar à tela inicial</b>.</p>
+</section>
+</main>
+
+<nav class="bottom-nav"><span>🏠 Rota</span><span>📦 Entregas</span><span>⚙️ Configurações</span></nav>
+<script src="app.js"></script>
+</body></html>
