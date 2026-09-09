@@ -84,24 +84,37 @@ function clearBulk(){
 }
 
 async function geocodeAddress(address){
-  // Santarém é a cidade padrão do Rota Entregas.
-  // Tentamos algumas formas para que o usuário não precise repetir a cidade em cada linha.
   const base=String(address||'').trim();
-  const queries=[
-    `${base}, Santarém, Pará, Brasil`,
-    `${base}, Santarém, PA, Brasil`,
-    `${base}, Santarém - PA, Brasil`,
-    `${base}, Brasil`
-  ];
-  for(const q of queries){
-    const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=3&countrycodes=br&q='+encodeURIComponent(q);
-    const response=await fetch(url,{headers:{'Accept':'application/json'}});
-    if(!response.ok) throw new Error('Falha no serviço de localização');
-    const results=await response.json();
-    if(results.length) return results;
-    await sleep(1100);
-  }
-  return [];
+  const key=base.toLowerCase().replace(/\s+/g,' ');
+  try{
+    const cached=localStorage.getItem('rota_geocode_'+key);
+    if(cached){const parsed=JSON.parse(cached);if(Array.isArray(parsed)&&parsed.length)return parsed;}
+  }catch(e){}
+
+  // Santarém é a cidade padrão. Fazemos UMA consulta principal por endereço
+  // para respeitar o limite do serviço público e evitar bloqueios em lote.
+  const q=`${base}, Santarém, Pará, Brasil`;
+  const params=new URLSearchParams({
+    format:'jsonv2',
+    limit:'5',
+    countrycodes:'br',
+    addressdetails:'1',
+    q,
+    viewbox:'-54.80,-2.35,-54.65,-2.55',
+    bounded:'1'
+  });
+  const url='https://nominatim.openstreetmap.org/search?'+params.toString();
+  const response=await fetch(url,{headers:{'Accept':'application/json','Accept-Language':'pt-BR,pt;q=0.9'}});
+  if(!response.ok) throw new Error('Serviço de localização indisponível ('+response.status+')');
+  const results=await response.json();
+  const inCity=results.filter(r=>{
+    const a=r.address||{};
+    const text=(r.display_name||'').toLowerCase();
+    return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') || text.includes('santarém') || text.includes('santarem');
+  });
+  const finalResults=inCity.length?inCity:results;
+  try{localStorage.setItem('rota_geocode_'+key,JSON.stringify(finalResults));}catch(e){}
+  return finalResults;
 }
 
 async function geocodeAll(){
@@ -111,15 +124,9 @@ async function geocodeAll(){
   if(!deliveries.length){msg.textContent='Importe pelo menos uma entrega primeiro.';msg.className='message geo-warn';return}
   btn.disabled=true; opt.disabled=true;
   let ok=0,notFound=0,errors=0;
-  msg.textContent='Localizando ponto de saída...';
-  try{
-    const startQuery=document.querySelector('#start').value.trim()||defaultOrigin.name;
-    const startResults=await geocodeAddress(startQuery+' , Santarém - PA');
-    if(startResults.length){
-      startPoint={lat:parseFloat(startResults[0].lat),lon:parseFloat(startResults[0].lon),name:startQuery};
-    }else startPoint={...defaultOrigin};
-  }catch(e){startPoint={...defaultOrigin}}
-  await sleep(1100);
+  // Mantemos um ponto de saída seguro para não gastar uma consulta de geocodificação extra.
+  // O campo de saída continua disponível para versões futuras com geocodificação dedicada.
+  startPoint={...defaultOrigin};
 
   for(let i=0;i<deliveries.length;i++){
     const d=deliveries[i];
@@ -130,11 +137,12 @@ async function geocodeAll(){
       const results=await geocodeAddress(query);
       if(results.length){
         d.lat=parseFloat(results[0].lat); d.lon=parseFloat(results[0].lon);
-        d.display_name=results[0].display_name; d.geocoded=true; d.needsGeocode=false; d.ambiguous=results.length>1; ok++;
+        d.display_name=results[0].display_name; d.geocoded=true; d.needsGeocode=false; d.ambiguous=results.length>1; d.approximate=!(results[0].type==='house'||results[0].type==='building'||results[0].type==='residential'); ok++;
       }else{d.geocoded=false;d.needsGeocode=true;notFound++}
     }catch(e){d.geocoded=false;errors++}
     render(deliveries.filter(x=>x.geocoded),0,0);
-    await sleep(1100);
+    // Respeita o limite aproximado de 1 requisição/segundo do Nominatim público.
+    if(i<deliveries.length-1) await sleep(1200);
   }
   const located=deliveries.filter(x=>x.geocoded);
   if(located.length){opt.disabled=false;drawStops(located)}
