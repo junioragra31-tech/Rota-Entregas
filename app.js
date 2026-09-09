@@ -84,11 +84,24 @@ function clearBulk(){
 }
 
 async function geocodeAddress(address){
-  const q=address+', Brasil';
-  const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=3&countrycodes=br&q='+encodeURIComponent(q);
-  const response=await fetch(url,{headers:{'Accept':'application/json'}});
-  if(!response.ok) throw new Error('Falha no serviço de localização');
-  return await response.json();
+  // Santarém é a cidade padrão do Rota Entregas.
+  // Tentamos algumas formas para que o usuário não precise repetir a cidade em cada linha.
+  const base=String(address||'').trim();
+  const queries=[
+    `${base}, Santarém, Pará, Brasil`,
+    `${base}, Santarém, PA, Brasil`,
+    `${base}, Santarém - PA, Brasil`,
+    `${base}, Brasil`
+  ];
+  for(const q of queries){
+    const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=3&countrycodes=br&q='+encodeURIComponent(q);
+    const response=await fetch(url,{headers:{'Accept':'application/json'}});
+    if(!response.ok) throw new Error('Falha no serviço de localização');
+    const results=await response.json();
+    if(results.length) return results;
+    await sleep(1100);
+  }
+  return [];
 }
 
 async function geocodeAll(){
