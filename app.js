@@ -117,48 +117,54 @@ async function geocodeAddress(address){
   const base=String(address||'').trim();
   const key=base.toLowerCase().replace(/\s+/g,' ');
   try{
-    const cached=localStorage.getItem('rota_geocode_v9_'+key);
+    const cached=localStorage.getItem('rota_geocode_v10_'+key);
     if(cached){const parsed=JSON.parse(cached);if(Array.isArray(parsed)&&parsed.length)return parsed;}
   }catch(e){}
 
   const parts=splitAddress(base);
   let results=[];
 
-  // Fernando Guilhon aparece em fontes cartográficas com nomes diferentes.
-  // Para ele, tentamos primeiro a busca livre com cada nome conhecido.
-  const fernandoQueries=isFernandoGuilhon(base)
-    ? [
-        `Rodovia Fernando Guilhon, Santarém, Pará, Brasil`,
-        `Av. Eng. Fernando Guilhon, Santarém, Pará, Brasil`,
-        `Avenida Engenheiro Fernando Guilhon, Santarém, Pará, Brasil`,
-        `Avenida Fernando Guilhon, Santarém, Pará, Brasil`,
-        `Fernando Guilhon, Santarém, Pará, Brasil`,
-        `PA-453, Santarém, Pará, Brasil`
-      ]
-    : [];
+  // Regra principal: se a linha não informar cidade/estado, o app assume Santarém/PA.
+  // A busca livre é feita primeiro porque foi a forma que demonstrou melhor cobertura
+  // nos testes reais. Depois usamos a busca estruturada como fallback.
+  const citySuffix=', Santarém, Pará, Brasil';
+  const freeQuery=base + citySuffix;
 
-  if(fernandoQueries.length){
-    for(let i=0;i<fernandoQueries.length;i++){
-      const q=parts.number
-        ? `${parts.number}, ${fernandoQueries[i]}`
-        : fernandoQueries[i];
-      const found=await fetchNominatim({
-        format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',
-        q,viewbox:'-54.80,-2.35,-54.65,-2.55'
-      });
-      const inCity=found.filter(r=>{
-        const a=r.address||{};
-        const text=(r.display_name||'').toLowerCase();
-        return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') ||
-               text.includes('santarém') || text.includes('santarem');
-      });
-      results=inCity.length?inCity:found;
-      if(results.length) break;
-      if(i<fernandoQueries.length-1) await sleep(1100);
-    }
+  // Fernando Guilhon possui várias grafias na base cartográfica.
+  const freeQueries=isFernandoGuilhon(base)
+    ? (parts.number
+      ? [
+          `${parts.street}, ${parts.number}, Santarém, Pará, Brasil`,
+          `${parts.number}, Rodovia Fernando Guilhon, Santarém, Pará, Brasil`,
+          `${parts.number}, Av. Eng. Fernando Guilhon, Santarém, Pará, Brasil`,
+          `${parts.number}, Avenida Fernando Guilhon, Santarém, Pará, Brasil`,
+          `${parts.number}, PA-453, Santarém, Pará, Brasil`
+        ]
+      : [
+          `Rodovia Fernando Guilhon, Santarém, Pará, Brasil`,
+          `Av. Eng. Fernando Guilhon, Santarém, Pará, Brasil`,
+          `Avenida Fernando Guilhon, Santarém, Pará, Brasil`,
+          `Fernando Guilhon, Santarém, Pará, Brasil`,
+          `PA-453, Santarém, Pará, Brasil`
+        ])
+    : [freeQuery];
+
+  for(let i=0;i<freeQueries.length && !results.length;i++){
+    const found=await fetchNominatim({
+      format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',
+      q:freeQueries[i],viewbox:'-54.80,-2.35,-54.65,-2.55'
+    });
+    const inCity=found.filter(r=>{
+      const a=r.address||{};
+      const text=(r.display_name||'').toLowerCase();
+      return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') ||
+             text.includes('santarém') || text.includes('santarem');
+    });
+    results=inCity.length?inCity:found;
+    if(!results.length && i<freeQueries.length-1) await sleep(1100);
   }
 
-  // Busca estruturada para os demais endereços.
+  // Fallback estruturado: rua/número ficam separados corretamente.
   if(!results.length){
     const street=normalizeStreetName(parts.street);
     const params={
@@ -177,25 +183,9 @@ async function geocodeAddress(address){
     results=inCity.length?inCity:found;
   }
 
-  // Último fallback: texto livre, inclusive para Fernando Guilhon.
-  if(!results.length){
-    const queries=isFernandoGuilhon(base)
-      ? fernandoQueries
-      : [`${base}, Santarém, Pará, Brasil`];
-    for(let i=0;i<queries.length && !results.length;i++){
-      const found=await fetchNominatim({
-        format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',
-        q:queries[i],viewbox:'-54.80,-2.35,-54.65,-2.55'
-      });
-      results=found;
-      if(!results.length && i<queries.length-1) await sleep(1100);
-    }
-  }
-
-  try{localStorage.setItem('rota_geocode_v9_'+key,JSON.stringify(results));}catch(e){}
+  try{localStorage.setItem('rota_geocode_v10_'+key,JSON.stringify(results));}catch(e){}
   return results;
 }
-
 async function geocodeAll(){
   const msg=document.querySelector('#geoMsg');
   const btn=document.querySelector('#geocodeBtn');
