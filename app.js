@@ -24,7 +24,7 @@ function render(route,totalKm=0,totalMin=0){
   if(!route.length){ol.innerHTML='<li class="empty">Nenhuma entrega com localização disponível.</li>';return}
   route.forEach((d,i)=>{
     const li=document.createElement('li');
-    const geo=d.geocoded?'📍 Localizado':'⚠️ Sem localização';
+    const geo=d.geocoded?(d.approximate?'📍 Localizado (aproximado)':'📍 Localizado'):'⚠️ Sem localização';
     const leg=d.roadDuration!=null?`<br><span class="road-leg">🚗 ${Math.round(d.roadDuration/60)} min até esta parada</span>`:'';
     li.innerHTML=`<div class="stop"><div><b>${i+1}. ${esc(d.name)}</b><br><small>${esc(d.address)}</small><br><span class="priority ${d.p==='alta'?'high':''}">${d.p==='alta'?'🔴 Alta prioridade':'🟢 Normal'}</span><br><span class="geo-badge">${geo}</span>${leg}</div><button onclick="go(${d.id})">Navegar</button></div>`;
     ol.appendChild(li);
@@ -83,37 +83,79 @@ function clearBulk(){
   document.querySelector('#importMsg').className='message';
 }
 
+function normalizeStreetName(address){
+  let s=String(address||'').trim();
+  s=s.replace(/\bRod\.?\s+Fernando\s+Guilhon\b/ig,'Rodovia Fernando Guilhon');
+  s=s.replace(/\bAv\.?\s+Eng\.?\s+Fernando\s+Guilhon\b/ig,'Avenida Engenheiro Fernando Guilhon');
+  s=s.replace(/\bAv\.?\s+Fernando\s+Guilhon\b/ig,'Avenida Fernando Guilhon');
+  return s;
+}
+
+function isFernandoGuilhon(text){
+  const t=String(text||'').toLowerCase();
+  return t.includes('fernando guilhon') || t.includes('pa-453');
+}
+
+function splitAddress(address){
+  let base=String(address||'').trim();
+  base=base.replace(/\s+/g,' ');
+  base=base.replace(/,?\s*Santar[eé]m\s*[-,]?\s*PA\s*$/i,'').trim();
+  base=base.replace(/,?\s*Santar[eé]m\s*$/i,'').trim();
+  const m=base.match(/^(.*?)(?:,\s*|\s+)(\d+[A-Za-z-]*)\b(.*)$/);
+  if(m) return {street:m[1].trim(),number:m[2].trim(),extra:m[3].trim()};
+  return {street:base,number:'',extra:''};
+}
+
+async function fetchNominatim(params){
+  const url='https://nominatim.openstreetmap.org/search?'+new URLSearchParams(params).toString();
+  const response=await fetch(url,{headers:{'Accept':'application/json','Accept-Language':'pt-BR,pt;q=0.9'}});
+  if(!response.ok) throw new Error('Serviço de localização indisponível ('+response.status+')');
+  return await response.json();
+}
+
 async function geocodeAddress(address){
   const base=String(address||'').trim();
   const key=base.toLowerCase().replace(/\s+/g,' ');
   try{
-    const cached=localStorage.getItem('rota_geocode_v7_'+key);
+    const cached=localStorage.getItem('rota_geocode_v8_'+key);
     if(cached){const parsed=JSON.parse(cached);if(Array.isArray(parsed)&&parsed.length)return parsed;}
   }catch(e){}
 
-  // Santarém é a cidade padrão. Fazemos UMA consulta principal por endereço
-  // para respeitar o limite do serviço público e evitar bloqueios em lote.
-  const q=`${base}, Santarém, Pará, Brasil`;
-  const params=new URLSearchParams({
-    format:'jsonv2',
-    limit:'5',
-    countrycodes:'br',
-    addressdetails:'1',
-    q,
-    viewbox:'-54.80,-2.35,-54.65,-2.55'
-  });
-  const url='https://nominatim.openstreetmap.org/search?'+params.toString();
-  const response=await fetch(url,{headers:{'Accept':'application/json','Accept-Language':'pt-BR,pt;q=0.9'}});
-  if(!response.ok) throw new Error('Serviço de localização indisponível ('+response.status+')');
-  const results=await response.json();
-  const inCity=results.filter(r=>{
-    const a=r.address||{};
-    const text=(r.display_name||'').toLowerCase();
-    return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') || text.includes('santarém') || text.includes('santarem');
-  });
-  const finalResults=inCity.length?inCity:results;
-  try{localStorage.setItem('rota_geocode_v7_'+key,JSON.stringify(finalResults));}catch(e){}
-  return finalResults;
+  const parts=splitAddress(base);
+  let results=[];
+
+  // Para Fernando Guilhon, usamos as formas que aparecem nas bases cartográficas.
+  // Se não houver número, procuramos a própria via e marcamos o ponto como aproximado.
+  const streets=isFernandoGuilhon(base)
+    ? ['Rodovia Fernando Guilhon','Avenida Engenheiro Fernando Guilhon','Avenida Fernando Guilhon','Fernando Guilhon','PA-453']
+    : [normalizeStreetName(parts.street)];
+
+  for(let i=0;i<streets.length;i++){
+    const params={
+      format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',
+      city:'Santarém',state:'Pará',country:'Brasil',street:parts.number?`${parts.number} ${streets[i]}`:streets[i],
+      viewbox:'-54.80,-2.35,-54.65,-2.55'
+    };
+    const found=await fetchNominatim(params);
+    const inCity=found.filter(r=>{
+      const a=r.address||{};
+      const text=(r.display_name||'').toLowerCase();
+      return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') || text.includes('santarém') || text.includes('santarem');
+    });
+    results=inCity.length?inCity:found;
+    if(results.length) break;
+    if(i<streets.length-1) await sleep(1100);
+  }
+
+  // Se a busca estruturada não encontrou um endereço comum, preservamos o fallback
+  // de texto livre que já funcionava nos testes anteriores.
+  if(!results.length && !isFernandoGuilhon(base)){
+    const q=`${base}, Santarém, Pará, Brasil`;
+    results=await fetchNominatim({format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',q,viewbox:'-54.80,-2.35,-54.65,-2.55'});
+  }
+
+  try{localStorage.setItem('rota_geocode_v8_'+key,JSON.stringify(results));}catch(e){}
+  return results;
 }
 
 async function geocodeAll(){
@@ -136,7 +178,7 @@ async function geocodeAll(){
       const results=await geocodeAddress(query);
       if(results.length){
         d.lat=parseFloat(results[0].lat); d.lon=parseFloat(results[0].lon);
-        d.display_name=results[0].display_name; d.geocoded=true; d.needsGeocode=false; d.ambiguous=results.length>1; d.approximate=!(results[0].type==='house'||results[0].type==='building'||results[0].type==='residential'); ok++;
+        d.display_name=results[0].display_name; d.geocoded=true; d.needsGeocode=false; d.ambiguous=results.length>1; d.approximate=!(results[0].type==='house'||results[0].type==='building'||results[0].type==='residential') || (!/\b\d+[A-Za-z-]*\b/.test(d.address)); ok++;
       }else{d.geocoded=false;d.needsGeocode=true;notFound++}
     }catch(e){d.geocoded=false;errors++}
     render(deliveries.filter(x=>x.geocoded),0,0);
