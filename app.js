@@ -172,9 +172,9 @@ async function roadOptimize(){
   const opt=document.querySelector('#opt'),msg=document.querySelector('#geoMsg');
   const pending=deliveries.filter(d=>!d.done&&Number.isFinite(d.lat)&&Number.isFinite(d.lon));
   if(!pending.length){msg.textContent='Não há entregas localizadas para calcular.';msg.className='message geo-warn';return}
-  if(pending.length>40){msg.textContent='Para o teste da rota real, use até 40 paradas por vez.';msg.className='message geo-warn';return}
+  if(pending.length>20){msg.textContent='Para esta versão de teste, use até 20 paradas por vez.';msg.className='message geo-warn';return}
   opt.disabled=true;
-  document.querySelector('#status').textContent='Calculando rota pelas ruas...';
+  document.querySelector('#status').textContent=`Calculando rota pelas ruas (${pending.length} paradas)...`;
   msg.textContent='🚗 Calculando distâncias e tempos pela malha viária...';msg.className='message';
   try{
     const points=[startPoint,...pending];
