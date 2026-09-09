@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR"> 
+<html lang="pt-BR">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -9,6 +9,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <title>Rota Entregas</title>
 </head>
 <body>
@@ -19,8 +20,23 @@
 
 <main>
 <section class="hero">
-  <div><span class="badge">PROTÓTIPO PWA</span><h2>Otimize sua rota</h2><p>Organize as paradas e abra a navegação no Google Maps ou Waze.</p></div>
+  <div><span class="badge">IMPORTAÇÃO EM LOTE</span><h2>Monte sua rota mais rápido</h2><p>Cole vários endereços de uma vez e transforme cada linha em uma entrega.</p></div>
   <div class="hero-icon">🚚</div>
+</section>
+
+<section class="panel">
+<h2>📋 Importar várias entregas</h2>
+<p class="hint">Coloque <b>um endereço por linha</b>. Se quiser, use <b>Nome - endereço</b>.</p>
+<textarea id="bulkInput" rows="8" placeholder="Exemplo:
+Maria - Av. Tapajós, 100, Santarém-PA
+João - Av. Mendonça Furtado, 850, Santarém-PA
+R. Pedro Teixeira, 30, Santarém-PA"></textarea>
+<div class="actions">
+  <button id="exampleBtn" class="secondary">🧪 Ver exemplo</button>
+  <button id="clearBtn" class="secondary">🗑️ Limpar</button>
+</div>
+<button id="importBtn" class="primary">➕ Importar entregas</button>
+<p id="importMsg" class="message" aria-live="polite"></p>
 </section>
 
 <section class="panel">
@@ -29,7 +45,15 @@
 <input id="start" value="Centro de Santarém">
 <label for="nav">Navegador</label>
 <select id="nav"><option value="maps">Google Maps</option><option value="waze">Waze</option></select>
-<button id="opt" class="primary">⚡ Calcular melhor rota</button>
+<button id="geocodeBtn" class="primary">📍 Localizar endereços</button>
+<button id="opt" class="primary" disabled>⚡ Calcular melhor rota</button>
+</section>
+
+<section class="panel">
+<h2>🗺️ Mapa</h2>
+<p id="geoMsg" class="message">Importe as entregas e toque em “Localizar endereços”.</p>
+<div id="map"></div>
+<div class="map-attribution">Mapa © OpenStreetMap contributors</div>
 </section>
 
 <section class="stats">
@@ -50,5 +74,6 @@
 </main>
 
 <nav class="bottom-nav"><span>🏠 Rota</span><span>📦 Entregas</span><span>⚙️ Configurações</span></nav>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script src="app.js"></script>
 </body></html>
