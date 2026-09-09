@@ -117,44 +117,82 @@ async function geocodeAddress(address){
   const base=String(address||'').trim();
   const key=base.toLowerCase().replace(/\s+/g,' ');
   try{
-    const cached=localStorage.getItem('rota_geocode_v8_'+key);
+    const cached=localStorage.getItem('rota_geocode_v9_'+key);
     if(cached){const parsed=JSON.parse(cached);if(Array.isArray(parsed)&&parsed.length)return parsed;}
   }catch(e){}
 
   const parts=splitAddress(base);
   let results=[];
 
-  // Para Fernando Guilhon, usamos as formas que aparecem nas bases cartográficas.
-  // Se não houver número, procuramos a própria via e marcamos o ponto como aproximado.
-  const streets=isFernandoGuilhon(base)
-    ? ['Rodovia Fernando Guilhon','Avenida Engenheiro Fernando Guilhon','Avenida Fernando Guilhon','Fernando Guilhon','PA-453']
-    : [normalizeStreetName(parts.street)];
+  // Fernando Guilhon aparece em fontes cartográficas com nomes diferentes.
+  // Para ele, tentamos primeiro a busca livre com cada nome conhecido.
+  const fernandoQueries=isFernandoGuilhon(base)
+    ? [
+        `Rodovia Fernando Guilhon, Santarém, Pará, Brasil`,
+        `Av. Eng. Fernando Guilhon, Santarém, Pará, Brasil`,
+        `Avenida Engenheiro Fernando Guilhon, Santarém, Pará, Brasil`,
+        `Avenida Fernando Guilhon, Santarém, Pará, Brasil`,
+        `Fernando Guilhon, Santarém, Pará, Brasil`,
+        `PA-453, Santarém, Pará, Brasil`
+      ]
+    : [];
 
-  for(let i=0;i<streets.length;i++){
+  if(fernandoQueries.length){
+    for(let i=0;i<fernandoQueries.length;i++){
+      const q=parts.number
+        ? `${parts.number}, ${fernandoQueries[i]}`
+        : fernandoQueries[i];
+      const found=await fetchNominatim({
+        format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',
+        q,viewbox:'-54.80,-2.35,-54.65,-2.55'
+      });
+      const inCity=found.filter(r=>{
+        const a=r.address||{};
+        const text=(r.display_name||'').toLowerCase();
+        return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') ||
+               text.includes('santarém') || text.includes('santarem');
+      });
+      results=inCity.length?inCity:found;
+      if(results.length) break;
+      if(i<fernandoQueries.length-1) await sleep(1100);
+    }
+  }
+
+  // Busca estruturada para os demais endereços.
+  if(!results.length){
+    const street=normalizeStreetName(parts.street);
     const params={
       format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',
-      city:'Santarém',state:'Pará',country:'Brasil',street:parts.number?`${parts.number} ${streets[i]}`:streets[i],
+      city:'Santarém',state:'Pará',country:'Brasil',
+      street:parts.number ? `${parts.number} ${street}` : street,
       viewbox:'-54.80,-2.35,-54.65,-2.55'
     };
     const found=await fetchNominatim(params);
     const inCity=found.filter(r=>{
       const a=r.address||{};
       const text=(r.display_name||'').toLowerCase();
-      return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') || text.includes('santarém') || text.includes('santarem');
+      return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') ||
+             text.includes('santarém') || text.includes('santarem');
     });
     results=inCity.length?inCity:found;
-    if(results.length) break;
-    if(i<streets.length-1) await sleep(1100);
   }
 
-  // Se a busca estruturada não encontrou um endereço comum, preservamos o fallback
-  // de texto livre que já funcionava nos testes anteriores.
-  if(!results.length && !isFernandoGuilhon(base)){
-    const q=`${base}, Santarém, Pará, Brasil`;
-    results=await fetchNominatim({format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',q,viewbox:'-54.80,-2.35,-54.65,-2.55'});
+  // Último fallback: texto livre, inclusive para Fernando Guilhon.
+  if(!results.length){
+    const queries=isFernandoGuilhon(base)
+      ? fernandoQueries
+      : [`${base}, Santarém, Pará, Brasil`];
+    for(let i=0;i<queries.length && !results.length;i++){
+      const found=await fetchNominatim({
+        format:'jsonv2',limit:'5',countrycodes:'br',addressdetails:'1',
+        q:queries[i],viewbox:'-54.80,-2.35,-54.65,-2.55'
+      });
+      results=found;
+      if(!results.length && i<queries.length-1) await sleep(1100);
+    }
   }
 
-  try{localStorage.setItem('rota_geocode_v8_'+key,JSON.stringify(results));}catch(e){}
+  try{localStorage.setItem('rota_geocode_v9_'+key,JSON.stringify(results));}catch(e){}
   return results;
 }
 
