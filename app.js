@@ -87,7 +87,7 @@ async function geocodeAddress(address){
   const base=String(address||'').trim();
   const key=base.toLowerCase().replace(/\s+/g,' ');
   try{
-    const cached=localStorage.getItem('rota_geocode_'+key);
+    const cached=localStorage.getItem('rota_geocode_v7_'+key);
     if(cached){const parsed=JSON.parse(cached);if(Array.isArray(parsed)&&parsed.length)return parsed;}
   }catch(e){}
 
@@ -100,8 +100,7 @@ async function geocodeAddress(address){
     countrycodes:'br',
     addressdetails:'1',
     q,
-    viewbox:'-54.80,-2.35,-54.65,-2.55',
-    bounded:'1'
+    viewbox:'-54.80,-2.35,-54.65,-2.55'
   });
   const url='https://nominatim.openstreetmap.org/search?'+params.toString();
   const response=await fetch(url,{headers:{'Accept':'application/json','Accept-Language':'pt-BR,pt;q=0.9'}});
@@ -113,7 +112,7 @@ async function geocodeAddress(address){
     return (a.city||a.town||a.municipality||'').toLowerCase().includes('santar') || text.includes('santarém') || text.includes('santarem');
   });
   const finalResults=inCity.length?inCity:results;
-  try{localStorage.setItem('rota_geocode_'+key,JSON.stringify(finalResults));}catch(e){}
+  try{localStorage.setItem('rota_geocode_v7_'+key,JSON.stringify(finalResults));}catch(e){}
   return finalResults;
 }
 
