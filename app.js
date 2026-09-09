@@ -46,6 +46,15 @@ function parseBulk(text){
       const pos=line.indexOf(sep);
       if(pos>0){name=line.slice(0,pos).trim();address=line.slice(pos+sep.length).trim();break}
     }
+    // Também aceita linhas no formato: "Entrega 1 Av. Rui Barbosa 3596"
+    // ou "Entrega 2. Rua Aramanai 1440", sem exigir hífen.
+    if(!name){
+      const m=line.match(/^Entrega\s*\d+\s*[-.:]?\s+(.+)$/i);
+      if(m){
+        name='Entrega '+(index+1);
+        address=m[1].trim();
+      }
+    }
     if(!name) name='Entrega '+(index+1);
     return {id:Date.now()+index,name,address,lat:null,lon:null,p:'normal',done:false,needsGeocode:true,geocoded:false};
   });
@@ -117,7 +126,7 @@ async function geocodeAddress(address){
   const base=String(address||'').trim();
   const key=base.toLowerCase().replace(/\s+/g,' ');
   try{
-    const cached=localStorage.getItem('rota_geocode_v10_'+key);
+    const cached=localStorage.getItem('rota_geocode_v11_'+key);
     if(cached){const parsed=JSON.parse(cached);if(Array.isArray(parsed)&&parsed.length)return parsed;}
   }catch(e){}
 
@@ -183,7 +192,7 @@ async function geocodeAddress(address){
     results=inCity.length?inCity:found;
   }
 
-  try{localStorage.setItem('rota_geocode_v10_'+key,JSON.stringify(results));}catch(e){}
+  try{localStorage.setItem('rota_geocode_v11_'+key,JSON.stringify(results));}catch(e){}
   return results;
 }
 async function geocodeAll(){
